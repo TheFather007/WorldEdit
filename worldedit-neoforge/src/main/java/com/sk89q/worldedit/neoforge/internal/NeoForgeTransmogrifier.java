@@ -81,10 +81,12 @@ public class NeoForgeTransmogrifier {
         Map<Property<?>, Object> props = new TreeMap<>(Comparator.comparing(Property::getName));
         for (Map.Entry<net.minecraft.world.level.block.state.properties.Property<?>, Comparable<?>> prop : mcProps.entrySet()) {
             Object value = prop.getValue();
-            if (prop.getKey() instanceof DirectionProperty) {
-                value = NeoForgeAdapter.adaptEnumFacing((net.minecraft.core.Direction) value);
-            } else if (prop.getKey() instanceof net.minecraft.world.level.block.state.properties.EnumProperty) {
-                value = ((StringRepresentable) value).getSerializedName();
+            if (prop.getKey() instanceof net.minecraft.world.level.block.state.properties.EnumProperty) {
+                if (prop.getKey().getValueClass() == net.minecraft.core.Direction.class) {
+                    value = NeoForgeAdapter.adaptEnumFacing((net.minecraft.core.Direction) value);
+                } else {
+                    value = ((StringRepresentable) value).getSerializedName();
+                }
             }
             props.put(block.getProperty(prop.getKey().getName()), value);
         }
