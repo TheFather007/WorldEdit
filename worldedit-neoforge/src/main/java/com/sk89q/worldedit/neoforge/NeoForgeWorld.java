@@ -720,4 +720,9 @@ public class NeoForgeWorld extends AbstractWorld {
             }
         };
     }
+
+    @Override
+    public boolean isValid() {
+        return worldRef.get() != null;
+    }
 }

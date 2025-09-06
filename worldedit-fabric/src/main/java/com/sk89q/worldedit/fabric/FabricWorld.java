@@ -740,4 +740,8 @@ public class FabricWorld extends AbstractWorld {
         };
     }
 
+    @Override
+    public boolean isValid() {
+        return worldRef.get() != null;
+    }
 }
