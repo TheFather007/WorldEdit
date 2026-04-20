@@ -19,6 +19,7 @@
 
 package com.sk89q.worldedit.regions;
 
+import com.google.common.math.IntMath;
 import com.sk89q.worldedit.math.BlockVector2;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.iterator.FlatRegion3DIterator;
@@ -26,8 +27,6 @@ import com.sk89q.worldedit.regions.iterator.FlatRegionIterator;
 import com.sk89q.worldedit.util.formatting.text.TranslatableComponent;
 import com.sk89q.worldedit.world.World;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -209,22 +208,51 @@ public class Polygonal2DRegion extends AbstractRegion implements FlatRegion {
 
     @Override
     public long getVolume() {
+        if (points.size() <= 2) {
+            return 0;
+        }
+
+        long concreteArea = concreteArea();
+        int b = boundaryPoints();
+        long i = interiorPoints(concreteArea, b);
+        long latticeArea = i + b;
+
+        return latticeArea * (maxY - minY + 1);
+    }
+
+    private int boundaryPoints() {
+        int j = points.size() - 1;
+        int boundaryPoints = 0;
+        for (int i = 0; i < points.size(); i++) {
+            int x = Math.abs(points.get(i).x() - points.get(j).x());
+            int z = Math.abs(points.get(i).z() - points.get(j).z());
+            boundaryPoints += IntMath.gcd(x, z);
+            j = i;
+        }
+
+        return boundaryPoints;
+    }
+
+    // Trapezoid formula
+    private long concreteArea() {
         long area = 0;
-        int i;
         int j = points.size() - 1;
 
-        for (i = 0; i < points.size(); ++i) {
-            long x = points.get(j).x() + points.get(i).x();
-            long z = points.get(j).z() - points.get(i).z();
+        for (int i = 0; i < points.size(); i++) {
+            BlockVector2 iPoint = points.get(i);
+            BlockVector2 jPoint = points.get(j);
+            long x = jPoint.x() + (long) iPoint.x();
+            long z = jPoint.z() - (long) iPoint.z();
             area += x * z;
             j = i;
         }
 
-        return BigDecimal.valueOf(area)
-                .multiply(BigDecimal.valueOf(0.5))
-                .abs()
-                .setScale(0, RoundingMode.FLOOR)
-                .longValue() * (maxY - minY + 1);
+        return Math.abs(area) / 2;
+    }
+
+    // Pick's theorem
+    private long interiorPoints(long concreteArea, long boundaryPoints) {
+        return concreteArea - boundaryPoints / 2 + 1;
     }
 
     @Override
