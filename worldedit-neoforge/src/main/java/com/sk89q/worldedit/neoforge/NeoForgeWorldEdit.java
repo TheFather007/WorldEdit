@@ -151,7 +151,13 @@ public class NeoForgeWorldEdit {
 
         config = new NeoForgeConfiguration(this);
 
-        this.provider = new NeoForgePermissionsProvider.VanillaPermissionsProvider(platform);
+        // Expose WorldEdit's permissions to NeoForge's PermissionAPI so that permission
+        // managers like LuckPerms can see and control them. The provider falls back to
+        // vanilla op/creative checks when no permission manager is installed.
+        LuckPermsPermissionsProvider permissionsProvider =
+            new LuckPermsPermissionsProvider(new NeoForgePermissionsProvider.VanillaPermissionsProvider(platform));
+        NeoForge.EVENT_BUS.register(permissionsProvider);
+        this.provider = permissionsProvider;
     }
 
     private void setupRegistries(MinecraftServer server) {
