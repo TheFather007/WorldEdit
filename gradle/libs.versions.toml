@@ -13,7 +13,7 @@ antlr = "4.13.1"
 
 fabric-api = "0.100.3+1.21"
 
-neoforge-minecraft = "1.21"
+neoforge-minecraft = "1.21.1"
 
 sponge-minecraft = "1.21"
 # https://repo.spongepowered.org/service/rest/repository/browse/maven-public/org/spongepowered/spongeapi/
@@ -90,7 +90,7 @@ fabric-minecraft = "com.mojang:minecraft:1.21"
 fabric-loader = "net.fabricmc:fabric-loader:0.15.11"
 fabric-permissions-api = "me.lucko:fabric-permissions-api:0.3.1"
 
-neoforge = "net.neoforged:neoforge:21.0.16-beta"
+neoforge = "net.neoforged:neoforge:21.1.234"
 
 # Mojang-provided libraries, CHECK AGAINST MINECRAFT for versions
 guava = "com.google.guava:guava:32.1.3-jre!!"
