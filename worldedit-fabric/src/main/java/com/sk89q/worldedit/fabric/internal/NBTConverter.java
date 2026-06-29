@@ -85,7 +85,7 @@ public final class NBTConverter {
     public static net.minecraft.nbt.ListTag toNative(LinListTag<?> tag) {
         net.minecraft.nbt.ListTag list = new net.minecraft.nbt.ListTag();
         for (LinTag<?> child : tag.value()) {
-            list.addAndUnwrap(toNative(child));
+            list.add(toNative(child));
         }
         return list;
     }
