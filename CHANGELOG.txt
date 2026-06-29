@@ -1,5 +1,5 @@
 7.3.8-fix
-- [NeoForge] Target Minecraft 1.21.1 and NeoForge 21.1.234
+- [NeoForge] Target Minecraft 1.21.1 and the NeoForge 21.1.x line (loads on 21.1.10 and newer 21.1.x; refuses other versions instead of crashing)
 - [NeoForge] Route all permission checks through the active NeoForge permission handler, so LuckPerms (and other permission managers) can control every WorldEdit permission - including in-code and dynamic ones - consistently, falling back to operator/creative checks when no manager is installed
 - [NeoForge] Fixed platform name listing "Forge" instead of "NeoForge"
 - [NeoForge] Fixed legacy blocks not transmogrifying
