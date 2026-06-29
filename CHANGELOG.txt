@@ -10,10 +10,12 @@
 - Fixed cone generation with negative heights
 - Fixed sending CUI packets to clients unnecessarily
 - Fixed cases where the task executor would not be shut down correctly
-- Improved rotation of crafter, rail, stairs and item frame blocks
+- Improved rotation of crafter blocks
+- Improved rotation of rail blocks, including detector, activator and powered rails
+- Improved rotation of stairs
+- Improved rotation of item frames
 - Fixed a case where other mods/plugins can make errors less useful
 - Fixed errors caused by unloaded worlds being used as //world overrides
-- Backported assorted fixes from the 7.3.x line (see git history)
 
 7.3.8
 - [Bukkit] Update 1.21.1 adapter for Spigot breakage
