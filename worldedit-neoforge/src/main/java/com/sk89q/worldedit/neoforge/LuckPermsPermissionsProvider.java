@@ -19,39 +19,114 @@
 
 package com.sk89q.worldedit.neoforge;
 
+import com.sk89q.worldedit.internal.util.LogManagerCompat;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.server.permission.PermissionAPI;
 import net.neoforged.neoforge.server.permission.events.PermissionGatherEvent;
+import net.neoforged.neoforge.server.permission.handler.IPermissionHandler;
 import net.neoforged.neoforge.server.permission.nodes.PermissionNode;
 import net.neoforged.neoforge.server.permission.nodes.PermissionTypes;
+import org.apache.logging.log4j.Logger;
 
+import java.lang.reflect.Field;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A permissions provider that exposes WorldEdit's permissions to NeoForge's
- * {@link PermissionAPI}.
+ * Routes WorldEdit's permission checks through NeoForge's active permission
+ * handler, so that a permission manager such as LuckPerms (which registers
+ * itself as that handler) can see and control <em>all</em> of WorldEdit's
+ * permissions.
  *
- * <p>This is what allows permission managers such as LuckPerms - which register
- * themselves as the NeoForge permission handler - to see and control WorldEdit's
- * permission nodes. WorldEdit's command permissions (e.g. {@code worldedit.region.set})
- * are collected as {@link PermissionNode}s and registered during the
- * {@link PermissionGatherEvent.Nodes} event, which is when NeoForge gathers all
- * permission nodes for the active handler.</p>
+ * <h2>Why not just use {@link PermissionAPI#getPermission}?</h2>
  *
- * <p>Each node uses a default resolver backed by the {@code fallback} provider
- * (vanilla op/creative/cheat-mode checks). This means that when no permission
- * manager is installed, behaviour is identical to the vanilla provider, while an
- * installed manager (LuckPerms, etc.) takes precedence whenever it defines a value
- * for the node.</p>
+ * <p>NeoForge's public {@link PermissionAPI#getPermission} throws for any
+ * {@link PermissionNode} that was not registered during
+ * {@link PermissionGatherEvent.Nodes}. WorldEdit, however, checks permissions
+ * as plain strings throughout its code base, including in-code checks that are
+ * not command conditions (e.g. {@code worldedit.anyblock},
+ * {@code worldedit.override.bedrock}) and unbounded dynamic ones (e.g.
+ * {@code worldedit.scripting.execute.<filename>}). These can never be fully
+ * pre-registered, so relying on {@code getPermission} would gate only a subset
+ * of checks and silently fall back to operator/creative for the rest -
+ * inconsistent and misleading.</p>
+ *
+ * <p>Instead we resolve every check against the active handler directly. Each
+ * permission becomes a {@link PermissionNode} whose default resolver delegates
+ * to the vanilla operator/creative {@code fallback}. As a result:</p>
+ * <ul>
+ *   <li>with LuckPerms (or any other handler) installed, it resolves the
+ *       permission by node name - exactly like the string-based Fabric
+ *       Permissions API integration - and uses the vanilla fallback only when
+ *       the manager leaves the permission undefined;</li>
+ *   <li>with no manager installed, NeoForge's default handler simply invokes
+ *       the same vanilla fallback, so behaviour is unchanged.</li>
+ * </ul>
+ *
+ * <p>The active handler is not exposed publicly, so it is accessed reflectively.
+ * If that ever fails, every check degrades gracefully to the vanilla fallback.</p>
  */
 public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider {
 
+    private static final Logger LOGGER = LogManagerCompat.getLogger();
+
+    /**
+     * The active handler backing {@link PermissionAPI}. It is private with no
+     * public accessor ({@link PermissionAPI#getActivePermissionHandler()} only
+     * returns its identifier), so it is read reflectively. {@code null} if it
+     * could not be accessed, in which case checks fall back to vanilla.
+     */
+    private static final Field ACTIVE_HANDLER_FIELD = resolveActiveHandlerField();
+
+    private static Field resolveActiveHandlerField() {
+        try {
+            Field field = PermissionAPI.class.getDeclaredField("activeHandler");
+            field.setAccessible(true);
+            return field;
+        } catch (Throwable t) {
+            LOGGER.warn("Could not access NeoForge's permission handler; WorldEdit permissions "
+                + "will fall back to operator/creative checks and ignore permission managers", t);
+            return null;
+        }
+    }
+
+    /**
+     * Permissions WorldEdit checks in code rather than as command conditions.
+     * These are registered with the permission manager purely for discoverability
+     * (so they appear in editors/completion); resolution does not depend on this
+     * list, so a permission missing from it is still resolved correctly.
+     */
+    private static final List<String> EXTRA_PERMISSIONS = List.of(
+        "worldedit.anyblock",
+        "worldedit.inventory.unrestricted",
+        "worldedit.limit.unrestricted",
+        "worldedit.timeout.unrestricted",
+        "worldedit.override.bedrock",
+        "worldedit.override.data-cycler",
+        "worldedit.superpickaxe",
+        "worldedit.superpickaxe.area",
+        "worldedit.superpickaxe.recursive",
+        "worldedit.butcher.ambient",
+        "worldedit.butcher.animals",
+        "worldedit.butcher.armorstands",
+        "worldedit.butcher.golems",
+        "worldedit.butcher.killed",
+        "worldedit.butcher.npcs",
+        "worldedit.butcher.pets",
+        "worldedit.butcher.tagged",
+        "worldedit.butcher.water",
+        "worldedit.navigation.thru.tool",
+        "worldedit.navigation.jumpto.tool",
+        "worldedit.setnbt",
+        "worldedit.selection.pos",
+        "worldedit.error.detailed",
+        "worldedit.scripting.execute"
+    );
+
     private final NeoForgePermissionsProvider fallback;
     private final Map<String, PermissionNode<Boolean>> nodes = new ConcurrentHashMap<>();
-    private final Set<PermissionNode<Boolean>> gathered = ConcurrentHashMap.newKeySet();
 
     public LuckPermsPermissionsProvider(NeoForgePermissionsProvider fallback) {
         this.fallback = fallback;
@@ -59,18 +134,27 @@ public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider
 
     @Override
     public boolean hasPermission(ServerPlayer player, String permission) {
-        PermissionNode<Boolean> node = nodes.get(permission);
-        // Only query the PermissionAPI for nodes that were actually registered with it
-        // during the gather event. Otherwise the API throws, so fall back to vanilla.
-        if (node != null && gathered.contains(node)) {
-            return PermissionAPI.getPermission(player, node);
+        IPermissionHandler handler = activeHandler();
+        if (handler != null) {
+            try {
+                Boolean result = handler.getPermission(player, nodeFor(permission));
+                if (result != null) {
+                    return result;
+                }
+            } catch (Throwable t) {
+                LOGGER.debug("Permission handler could not resolve {}; falling back to vanilla", permission, t);
+            }
         }
         return fallback.hasPermission(player, permission);
     }
 
     @Override
     public void registerPermission(String permission) {
-        nodes.computeIfAbsent(permission, this::createNode);
+        nodeFor(permission);
+    }
+
+    private PermissionNode<Boolean> nodeFor(String permission) {
+        return nodes.computeIfAbsent(permission, this::createNode);
     }
 
     private PermissionNode<Boolean> createNode(String permission) {
@@ -89,18 +173,31 @@ public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider
         );
     }
 
+    private static IPermissionHandler activeHandler() {
+        if (ACTIVE_HANDLER_FIELD == null) {
+            return null;
+        }
+        try {
+            return (IPermissionHandler) ACTIVE_HANDLER_FIELD.get(null);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     /**
-     * Registers all of WorldEdit's collected permission nodes with NeoForge's
-     * {@link PermissionAPI} so that the active permission handler can resolve them.
-     *
-     * <p>Listens on the {@link net.neoforged.neoforge.common.NeoForge#EVENT_BUS} and
-     * is fired after commands (and therefore their permissions) have been registered.</p>
+     * Registers the statically-known permissions with the active handler so they
+     * are discoverable in permission-manager editors. This is cosmetic only -
+     * {@link #hasPermission} resolves against the handler directly and does not
+     * require a permission to be registered here.
      */
     @SubscribeEvent
     public void onPermissionGather(PermissionGatherEvent.Nodes event) {
+        EXTRA_PERMISSIONS.forEach(this::nodeFor);
         for (PermissionNode<Boolean> node : nodes.values()) {
-            if (gathered.add(node)) {
+            try {
                 event.addNodes(node);
+            } catch (IllegalArgumentException alreadyRegistered) {
+                // A node with this name was already gathered (e.g. by another mod); ignore.
             }
         }
     }
