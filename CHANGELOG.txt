@@ -16,6 +16,10 @@
 - Improved rotation of item frames
 - Fixed a case where other mods/plugins can make errors less useful
 - Fixed errors caused by unloaded worlds being used as //world overrides
+- Fixed //generatebiome not being possible to undo
+- Improved accuracy of area/volume calculations for 2D polygon selections
+- Fixed some issues when creating extend region selectors via the API
+- Fixed some permission setups not showing a friendly permission error message
 
 7.3.8
 - [Bukkit] Update 1.21.1 adapter for Spigot breakage
