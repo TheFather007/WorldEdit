@@ -24,13 +24,13 @@ file = "META-INF/accesstransformer.cfg"
 [[dependencies.worldedit]]
 modId = "minecraft"
 type = "required"
-versionRange = "[${minecraftVersion},${nextMajorMinecraftVersion})"
+versionRange = "[${minecraftVersion}]"
 ordering = "NONE"
 side = "BOTH"
 
 [[dependencies.worldedit]]
 modId = "neoforge"
 type = "required"
-versionRange = "[${neoVersion},)"
+versionRange = "[${neoVersion},${nextNeoforgeMinorVersion})"
 ordering = "NONE"
 side = "BOTH"

@@ -12,8 +12,11 @@ platform {
 }
 
 val minecraftVersion = libs.versions.neoforge.minecraft.get()
-val nextMajorMinecraftVersion: String = minecraftVersion.split('.').let { (useless, major) ->
-    "$useless.${major.toInt() + 1}"
+// Upper bound (exclusive) for the supported NeoForge version range: the next minor line.
+// NeoForge is versioned as <mcMinor>.<mcPatch>.<build>, so e.g. 21.1.234 -> 21.2, restricting
+// the mod to the 21.1.x line that matches the Minecraft version it was compiled against.
+val nextNeoforgeMinorVersion: String = libs.neoforge.get().version!!.split('.').let { parts ->
+    "${parts[0]}.${parts[1].toInt() + 1}"
 }
 
 val apiClasspath = configurations.create("apiClasspath") {
@@ -89,7 +92,7 @@ tasks.named<Copy>("processResources") {
         "version" to project.ext["internalVersion"],
         "neoVersion" to libs.neoforge.get().version,
         "minecraftVersion" to minecraftVersion,
-        "nextMajorMinecraftVersion" to nextMajorMinecraftVersion
+        "nextNeoforgeMinorVersion" to nextNeoforgeMinorVersion
     )
     properties.forEach { (key, value) ->
         inputs.property(key, value)
