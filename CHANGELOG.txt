@@ -1,3 +1,20 @@
+7.3.8-fix
+- [NeoForge] Target Minecraft 1.21.1 and NeoForge 21.1.234
+- [NeoForge] Expose WorldEdit permissions to NeoForge's PermissionAPI so LuckPerms (and other permission managers) can see and control them
+- [NeoForge] Fixed platform name listing "Forge" instead of "NeoForge"
+- [NeoForge] Fixed legacy blocks not transmogrifying
+- Added //mirror as an alias of //flip
+- Added the ability to copy the block state string from the info tool output
+- Fixed convex shapes behaving incorrectly when three points in a straight line are selected
+- Fixed masks for biome operations only applying to //setbiome
+- Fixed cone generation with negative heights
+- Fixed sending CUI packets to clients unnecessarily
+- Fixed cases where the task executor would not be shut down correctly
+- Improved rotation of crafter, rail, stairs and item frame blocks
+- Fixed a case where other mods/plugins can make errors less useful
+- Fixed errors caused by unloaded worlds being used as //world overrides
+- Backported assorted fixes from the 7.3.x line (see git history)
+
 7.3.8
 - [Bukkit] Update 1.21.1 adapter for Spigot breakage
 
