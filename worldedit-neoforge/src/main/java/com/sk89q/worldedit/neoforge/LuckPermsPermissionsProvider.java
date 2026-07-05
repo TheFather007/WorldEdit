@@ -42,15 +42,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * Resolves WorldEdit's permission checks on NeoForge, in the following order.
  *
  * <ol>
- *   <li><b>LuckPerms</b> - when the LuckPerms mod is present, its API is queried directly.
- *       This is string-based and works for every permission (command, in-code and dynamic)
- *       regardless of the NeoForge permission-handler configuration.</li>
+ *   <li><b>LuckPerms</b> - when the LuckPerms mod is present, its API is queried directly and is
+ *       authoritative: an explicit {@code TRUE} grants and an explicit {@code FALSE} denies, and
+ *       an unset permission is denied too (no operator/creative fallback). This is string-based
+ *       and works for every permission (command, in-code and dynamic) regardless of the NeoForge
+ *       permission-handler configuration. Vanilla is used only if LuckPerms cannot be queried
+ *       (not yet initialised or an error).</li>
  *   <li><b>NeoForge PermissionAPI</b> - when LuckPerms is absent, checks are resolved through
  *       {@link PermissionAPI#getPermission}, so any other permission manager registered as the
  *       active NeoForge handler is honoured.</li>
- *   <li><b>Vanilla</b> - operator/creative/cheat checks, used when neither of the above defines
- *       the permission (LuckPerms leaves it unset, or the node is not registered / no manager
- *       is installed).</li>
+ *   <li><b>Vanilla</b> - operator/creative/cheat checks, used when LuckPerms is absent and the
+ *       PermissionAPI does not define the permission (node not registered / no manager installed).</li>
  * </ol>
  *
  * <p>WorldEdit's permissions are registered with NeoForge's PermissionAPI during
@@ -115,7 +117,8 @@ public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider
 
     @Override
     public boolean hasPermission(ServerPlayer player, String permission) {
-        // 1. LuckPerms (queried directly) takes precedence when installed.
+        // 1. LuckPerms, when installed, is authoritative: its TRUE/FALSE (and "unset" as deny)
+        //    is used directly. Vanilla is used only when LuckPerms cannot be queried (result null).
         if (LUCKPERMS_LOADED) {
             Boolean luckPerms = LuckPermsResolver.check(player, permission);
             if (luckPerms != null) {
@@ -193,8 +196,9 @@ public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider
         }
 
         /**
-         * {@return {@code TRUE}/{@code FALSE} if LuckPerms explicitly sets the permission, or
-         * {@code null} if it is unset or LuckPerms cannot be queried (caller should then fall back)}
+         * {@return {@code TRUE} to allow or {@code FALSE} to deny - LuckPerms is authoritative, so an
+         * unset permission is denied as well - or {@code null} only when LuckPerms cannot be queried
+         * (not initialised or an error), in which case the caller falls back to the vanilla checks}
          */
         static Boolean check(ServerPlayer player, String permission) {
             try {
@@ -207,10 +211,11 @@ public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider
                 User user = adapter.getUser(player);
                 QueryOptions options = adapter.getQueryOptions(player);
                 Tristate result = user.getCachedData().getPermissionData(options).checkPermission(permission);
+                // LuckPerms is authoritative: an unset (UNDEFINED) permission means "not granted",
+                // so it is denied rather than falling back to operator/creative.
                 return switch (result) {
                     case TRUE -> Boolean.TRUE;
-                    case FALSE -> Boolean.FALSE;
-                    case UNDEFINED -> null;
+                    case FALSE, UNDEFINED -> Boolean.FALSE;
                 };
             } catch (IllegalStateException notReady) {
                 return null;
