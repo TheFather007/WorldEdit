@@ -44,6 +44,8 @@ dependencies {
     "api"(project(":worldedit-core"))
 
     "implementation"(libs.neoforge)
+    // Provided at runtime by the LuckPerms mod; used to resolve permissions through it.
+    "compileOnly"(libs.luckperms.api)
 }
 
 minecraft {

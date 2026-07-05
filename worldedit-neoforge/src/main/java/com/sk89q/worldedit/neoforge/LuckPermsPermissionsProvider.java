@@ -20,9 +20,14 @@
 package com.sk89q.worldedit.neoforge;
 
 import com.sk89q.worldedit.internal.util.LogManagerCompat;
+import net.luckperms.api.LuckPermsProvider;
+import net.luckperms.api.model.user.User;
+import net.luckperms.api.platform.PlayerAdapter;
+import net.luckperms.api.query.QueryOptions;
+import net.luckperms.api.util.Tristate;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.server.permission.PermissionAPI;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.server.permission.events.PermissionGatherEvent;
 import net.neoforged.neoforge.server.permission.nodes.PermissionNode;
 import net.neoforged.neoforge.server.permission.nodes.PermissionTypes;
@@ -33,35 +38,40 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Exposes WorldEdit's permissions to NeoForge's {@link PermissionAPI} and resolves
- * permission checks through it, so a permission manager such as LuckPerms (which
- * registers itself as the active NeoForge permission handler) can control them.
+ * Resolves WorldEdit's permission checks through LuckPerms on NeoForge.
  *
- * <p>WorldEdit's permissions are registered as {@link PermissionNode}s during
- * {@link PermissionGatherEvent.Nodes}: the command permissions (collected via
- * {@link #registerPermission}) plus the {@link #EXTRA_PERMISSIONS} that WorldEdit
- * checks in code rather than as command conditions. Checks are then resolved with
- * {@link PermissionAPI#getPermission}, which dispatches to the active handler.</p>
+ * <p>NeoForge's own {@code PermissionAPI} is node-based and only resolves through the
+ * configured active handler, which in practice does not reliably route WorldEdit's
+ * string permissions to LuckPerms. Instead this provider queries LuckPerms' own API
+ * directly ({@link net.luckperms.api.LuckPerms}), which is string-based and works for
+ * every permission - command, in-code and dynamic alike - regardless of the NeoForge
+ * permission-handler configuration.</p>
  *
- * <p>Each node's default resolver falls back to the vanilla op/creative/cheat
- * checks, so behaviour is unchanged when no permission manager is installed, while
- * an installed manager takes precedence whenever it defines the permission.</p>
+ * <p>An explicit LuckPerms {@code TRUE}/{@code FALSE} is honoured; an unset
+ * ({@code UNDEFINED}) permission, or LuckPerms being absent/not ready, falls back to the
+ * vanilla operator/creative/cheat checks - so behaviour is unchanged without LuckPerms.</p>
  *
- * <p>Note: {@link PermissionAPI#getPermission} only works for nodes registered
- * during the gather event. WorldEdit's statically-known permissions are all
- * registered, but truly dynamic ones (e.g. {@code worldedit.scripting.execute.<file>},
- * whose set is unbounded) cannot be pre-registered and fall back to the vanilla
- * checks. Resolving those would require calling the handler directly, which is not
- * possible through NeoForge's public API.</p>
+ * <p>WorldEdit's permissions are still registered with NeoForge's PermissionAPI during
+ * {@link PermissionGatherEvent.Nodes} purely so they appear in LuckPerms' editor/tree;
+ * resolution does not depend on that registration.</p>
  */
 public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider {
 
     private static final Logger LOGGER = LogManagerCompat.getLogger();
 
+    private static final boolean LUCKPERMS_LOADED = isLuckPermsLoaded();
+
+    private static boolean isLuckPermsLoaded() {
+        try {
+            return ModList.get().isLoaded("luckperms");
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /**
-     * Permissions WorldEdit checks in code rather than as command conditions. These
-     * are registered so that {@link PermissionAPI#getPermission} can resolve them
-     * (and so they appear in permission-manager editors).
+     * Permissions WorldEdit checks in code rather than as command conditions. These are
+     * registered so they appear in LuckPerms' editor (resolution does not depend on it).
      */
     private static final List<String> EXTRA_PERMISSIONS = List.of(
         "worldedit.anyblock",
@@ -96,21 +106,19 @@ public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider
 
     public LuckPermsPermissionsProvider(NeoForgePermissionsProvider fallback) {
         this.fallback = fallback;
+        if (LUCKPERMS_LOADED) {
+            LOGGER.info("WorldEdit is resolving permissions through LuckPerms");
+        } else {
+            LOGGER.info("WorldEdit did not detect LuckPerms; using operator/creative permission checks");
+        }
     }
 
     @Override
     public boolean hasPermission(ServerPlayer player, String permission) {
-        PermissionNode<Boolean> node = nodes.get(permission);
-        if (node != null) {
-            try {
-                Boolean result = PermissionAPI.getPermission(player, node);
-                if (result != null) {
-                    return result;
-                }
-            } catch (Throwable t) {
-                // The node is not registered with the active handler (e.g. a permission
-                // registered after the gather event); fall back to the vanilla checks.
-                LOGGER.debug("PermissionAPI could not resolve {}; falling back to vanilla checks", permission, t);
+        if (LUCKPERMS_LOADED) {
+            Boolean result = LuckPermsResolver.check(player, permission);
+            if (result != null) {
+                return result;
             }
         }
         return fallback.hasPermission(player, permission);
@@ -128,8 +136,7 @@ public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider
     private PermissionNode<Boolean> createNode(String permission) {
         // NeoForge only exposes the (modId, nodeName) constructor publicly, which builds the
         // node name as "modId.nodeName". Splitting WorldEdit's dotted permission (e.g.
-        // "worldedit.selection.pos") at the first dot reproduces the exact original string,
-        // which is what PermissionNode#getNodeName returns and what LuckPerms matches against.
+        // "worldedit.selection.pos") at the first dot reproduces the exact original string.
         int dot = permission.indexOf('.');
         String modId = dot >= 0 ? permission.substring(0, dot) : NeoForgeWorldEdit.MOD_ID;
         String nodeName = dot >= 0 ? permission.substring(dot + 1) : permission;
@@ -142,9 +149,9 @@ public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider
     }
 
     /**
-     * Registers all of WorldEdit's collected permission nodes with NeoForge's
-     * {@link PermissionAPI} so that {@link PermissionAPI#getPermission} can resolve
-     * them and they appear in permission-manager editors.
+     * Registers WorldEdit's collected permission nodes with NeoForge's PermissionAPI so
+     * that they are discoverable in LuckPerms' editor. This is cosmetic only;
+     * {@link #hasPermission} resolves through LuckPerms directly.
      */
     @SubscribeEvent
     public void onPermissionGather(PermissionGatherEvent.Nodes event) {
@@ -154,6 +161,49 @@ public class LuckPermsPermissionsProvider implements NeoForgePermissionsProvider
                 event.addNodes(node);
             } catch (IllegalArgumentException alreadyRegistered) {
                 // A node with this name was already gathered (e.g. by another mod); ignore.
+            }
+        }
+    }
+
+    /**
+     * Isolates all references to the LuckPerms API so its classes are only loaded when
+     * LuckPerms is installed (guarded by {@link #LUCKPERMS_LOADED}).
+     */
+    private static final class LuckPermsResolver {
+
+        // LuckPerms' PlayerAdapter is stable for the whole server run; cache it.
+        private static volatile PlayerAdapter<ServerPlayer> adapterCache;
+
+        private LuckPermsResolver() {
+        }
+
+        /**
+         * {@return {@code TRUE}/{@code FALSE} if LuckPerms explicitly sets the permission,
+         * or {@code null} if it is unset or LuckPerms cannot be queried (caller should then
+         * fall back to the vanilla checks)}
+         */
+        static Boolean check(ServerPlayer player, String permission) {
+            try {
+                PlayerAdapter<ServerPlayer> adapter = adapterCache;
+                if (adapter == null) {
+                    // Throws IllegalStateException if LuckPerms is not ready yet.
+                    adapter = LuckPermsProvider.get().getPlayerAdapter(ServerPlayer.class);
+                    adapterCache = adapter;
+                }
+                User user = adapter.getUser(player);
+                QueryOptions options = adapter.getQueryOptions(player);
+                Tristate result = user.getCachedData().getPermissionData(options).checkPermission(permission);
+                return switch (result) {
+                    case TRUE -> Boolean.TRUE;
+                    case FALSE -> Boolean.FALSE;
+                    case UNDEFINED -> null;
+                };
+            } catch (IllegalStateException notReady) {
+                return null;
+            } catch (Throwable t) {
+                adapterCache = null; // adapter may be stale - refresh it next time
+                LOGGER.debug("LuckPerms permission check failed for {}; falling back to vanilla", permission, t);
+                return null;
             }
         }
     }
