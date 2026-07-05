@@ -1,6 +1,6 @@
 7.3.8-fix
 - [NeoForge] Target Minecraft 1.21.1 and the NeoForge 21.1.x line (loads on 21.1.10 and newer 21.1.x; refuses other versions instead of crashing)
-- [NeoForge] Resolve WorldEdit's permission checks through LuckPerms directly (via the LuckPerms API), so LuckPerms controls every WorldEdit permission (command, in-code and dynamic); falls back to operator/creative checks when LuckPerms is absent or leaves a permission unset. Permissions are still registered with NeoForge's PermissionAPI so they show up in LuckPerms' editor
+- [NeoForge] Resolve WorldEdit's permission checks through LuckPerms directly (via the LuckPerms API) when it is installed, so LuckPerms controls every WorldEdit permission (command, in-code and dynamic); when LuckPerms is absent, resolve through NeoForge's PermissionAPI (honouring any other active permission handler), then fall back to operator/creative checks. Permissions are registered with the PermissionAPI so they show up in a manager's editor
 - [NeoForge] Fixed platform name listing "Forge" instead of "NeoForge"
 - [NeoForge] Fixed legacy blocks not transmogrifying
 - Added //mirror as an alias of //flip
