@@ -31,6 +31,6 @@ side = "BOTH"
 [[dependencies.worldedit]]
 modId = "neoforge"
 type = "required"
-versionRange = "[${neoVersion},${nextNeoforgeMinorVersion})"
+versionRange = "[${minNeoforgeVersion},${nextNeoforgeMinorVersion})"
 ordering = "NONE"
 side = "BOTH"

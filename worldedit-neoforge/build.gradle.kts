@@ -12,8 +12,12 @@ platform {
 }
 
 val minecraftVersion = libs.versions.neoforge.minecraft.get()
+// Lowest supported NeoForge build (the declared dependency floor). Decoupled from the
+// compiled-against `neoforge` library version so the mod can be built against a newer
+// build while still loading on the whole 21.1.x line.
+val minNeoforgeVersion = libs.versions.neoforge.min.get()
 // Upper bound (exclusive) for the supported NeoForge version range: the next minor line.
-// NeoForge is versioned as <mcMinor>.<mcPatch>.<build>, so e.g. 21.1.234 -> 21.2, restricting
+// NeoForge is versioned as <mcMinor>.<mcPatch>.<build>, so e.g. 21.1.235 -> 21.2, restricting
 // the mod to the 21.1.x line that matches the Minecraft version it was compiled against.
 val nextNeoforgeMinorVersion: String = libs.neoforge.get().version!!.split('.').let { parts ->
     "${parts[0]}.${parts[1].toInt() + 1}"
@@ -92,6 +96,7 @@ tasks.named<Copy>("processResources") {
         "version" to project.ext["internalVersion"],
         "neoVersion" to libs.neoforge.get().version,
         "minecraftVersion" to minecraftVersion,
+        "minNeoforgeVersion" to minNeoforgeVersion,
         "nextNeoforgeMinorVersion" to nextNeoforgeMinorVersion
     )
     properties.forEach { (key, value) ->
